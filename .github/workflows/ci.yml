@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [ '*' ]
+    tags: [ '*' ] # Trigger on any tag
+  pull_request:
+    branches: [ '*' ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24' # You can specify a version or let it use the latest stable
+    - name: Build
+      run: go build -v -o s3magic ./...
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: s3magic
+        path: s3magic
+    - name: Run tests
+      run: go test -v ./...
+
+  build-release-binaries:
+    name: Build Release Binary for ${{ matrix.os_name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            os_name: linux
+            binary_name_suffix: linux
+          - os: macos-latest
+            os_name: macos
+            binary_name_suffix: macos
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24'
+    - name: Build release binary
+      run: go build -v -o s3magic-${{ matrix.binary_name_suffix }} ./...
+    - name: Upload release artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: s3magic-${{ matrix.binary_name_suffix }} # e.g., s3magic-linux
+        path: s3magic-${{ matrix.binary_name_suffix }}
+
+  create-github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build-release-binaries
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write # Required to create a release
+    steps:
+    - name: Download all release artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: release-artifacts # All artifacts will be downloaded into this directory
+        # No 'name' means download all artifacts from this workflow run
+
+    - name: List downloaded files # For debugging/verification
+      run: ls -R release-artifacts
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
+        files: |
+          release-artifacts/s3magic-linux/s3magic-linux
+          release-artifacts/s3magic-macos/s3magic-macos
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
