@@ -1,4 +1,4 @@
-module github.com/user/s3magic
+module github.com/mliezun/s3magic
 
 go 1.24
 

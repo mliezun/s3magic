@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/user/s3magic/cmd"
+	"github.com/mliezun/s3magic/cmd"
 )
 
 func main() {
