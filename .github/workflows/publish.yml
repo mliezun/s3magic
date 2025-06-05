@@ -16,7 +16,7 @@ jobs:
     - name: Build
       run: go build -v -o s3magic ./...
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: s3magic
         path: s3magic
@@ -45,7 +45,7 @@ jobs:
     - name: Build release binary
       run: go build -v -o s3magic-${{ matrix.binary_name_suffix }} ./...
     - name: Upload release artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: s3magic-${{ matrix.binary_name_suffix }} # e.g., s3magic-linux
         path: s3magic-${{ matrix.binary_name_suffix }}
@@ -59,7 +59,7 @@ jobs:
       contents: write # Required to create a release
     steps:
     - name: Download all release artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: release-artifacts # All artifacts will be downloaded into this directory
         # No 'name' means download all artifacts from this workflow run
