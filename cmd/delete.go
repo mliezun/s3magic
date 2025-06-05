@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -35,7 +36,7 @@ s3magic delete /path/to/objects_to_delete.txt`,
 		client := s3.NewFromConfig(cfg)
 
 		var continuationToken *string
-		fmt.Println("All objects in bucket:")
+		var allObjects [][]types.Object
 		bucket := args[0]
 
 		for {
@@ -48,6 +49,7 @@ s3magic delete /path/to/objects_to_delete.txt`,
 			}
 
 			// Process objects in current page
+			allObjects = append(allObjects, output.Contents)
 			go deleteObjects(bucket, output.Contents)
 
 			// Check if there are more pages
@@ -58,6 +60,18 @@ s3magic delete /path/to/objects_to_delete.txt`,
 			// Set continuation token for next page
 			continuationToken = output.NextContinuationToken
 		}
+
+		wg := sync.WaitGroup{}
+
+		for _, objects := range allObjects {
+			wg.Add(1)
+			go func(objects []types.Object) {
+				deleteObjects(bucket, objects)
+				wg.Done()
+			}(objects)
+		}
+
+		wg.Wait()
 
 		// // In a real implementation, you would add logic here to:
 		// // 1. Read and parse the specified file.
@@ -95,52 +109,43 @@ func deleteObjects(bucketName string, objects []types.Object) error {
 		return nil
 	}
 
-	// S3 DeleteObjects API can delete up to 1000 objects per request
-	const maxDeleteObjects = 1000
+	if len(objects) > 1000 {
+		return fmt.Errorf("too many objects")
+	}
 
-	// Process objects in batches
-	for i := 0; i < len(objects); i += maxDeleteObjects {
-		end := i + maxDeleteObjects
-		if end > len(objects) {
-			end = len(objects)
-		}
+	// Build the delete request
+	var objectsToDelete []types.ObjectIdentifier
+	for _, obj := range objects {
+		objectsToDelete = append(objectsToDelete, types.ObjectIdentifier{
+			Key: obj.Key,
+		})
+	}
 
-		batch := objects[i:end]
+	// Perform the batch delete
+	deleteInput := &s3.DeleteObjectsInput{
+		Bucket: aws.String(bucketName),
+		Delete: &types.Delete{
+			Objects: objectsToDelete,
+			Quiet:   aws.Bool(false), // Set to true to suppress successful deletion output
+		},
+	}
 
-		// Build the delete request
-		var objectsToDelete []types.ObjectIdentifier
-		for _, obj := range batch {
-			objectsToDelete = append(objectsToDelete, types.ObjectIdentifier{
-				Key: obj.Key,
-			})
-		}
+	output, err := client.DeleteObjects(context.TODO(), deleteInput)
+	if err != nil {
+		return fmt.Errorf("failed to delete objects: %w", err)
+	}
 
-		// Perform the batch delete
-		deleteInput := &s3.DeleteObjectsInput{
-			Bucket: aws.String(bucketName),
-			Delete: &types.Delete{
-				Objects: objectsToDelete,
-				Quiet:   aws.Bool(false), // Set to true to suppress successful deletion output
-			},
-		}
+	// Report results
+	fmt.Printf("Successfully deleted %d objects\n", len(output.Deleted))
 
-		output, err := client.DeleteObjects(context.TODO(), deleteInput)
-		if err != nil {
-			return fmt.Errorf("failed to delete objects: %w", err)
-		}
-
-		// Report results
-		fmt.Printf("Successfully deleted %d objects\n", len(output.Deleted))
-
-		// Report any errors
-		if len(output.Errors) > 0 {
-			fmt.Printf("Failed to delete %d objects:\n", len(output.Errors))
-			for _, deleteError := range output.Errors {
-				fmt.Printf("  - %s: %s (%s)\n",
-					aws.ToString(deleteError.Key),
-					aws.ToString(deleteError.Message),
-					aws.ToString(deleteError.Code))
-			}
+	// Report any errors
+	if len(output.Errors) > 0 {
+		fmt.Printf("Failed to delete %d objects:\n", len(output.Errors))
+		for _, deleteError := range output.Errors {
+			fmt.Printf("  - %s: %s (%s)\n",
+				aws.ToString(deleteError.Key),
+				aws.ToString(deleteError.Message),
+				aws.ToString(deleteError.Code))
 		}
 	}
 
