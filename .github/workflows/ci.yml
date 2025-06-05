@@ -2,8 +2,8 @@ name: CI
 
 on:
   push:
-    branches: [ '*' ]
-    tags: [ '*' ] # Trigger on any tag
+    branches: [ 'main' ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ '*' ]
 
