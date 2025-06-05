@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [ 'main' ]
+  pull_request:
+    branches: [ '*' ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24' # You can specify a version or let it use the latest stable
+    - name: Build
+      run: go build -v -o s3magic ./...
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: s3magic
+        path: s3magic
+    - name: Run tests
+      run: go test -v ./...
